@@ -54,7 +54,7 @@ def add_reading(reading: Reading): #if incoming data is not of object type Readi
 
 @app.get("/readings") #same endpoint as above except this is a different method (get)
 def list_readings(sensor: str | None = None, start:str | None = None, end:str | None = None, limit:int = 100): #takes in sensor as a parameter that fastapi reals from the url (eg. /readings?sensor=chamber_pressure)
-    #takes start and end timestamp and filters for readings within that time period
+    #takes start and end timestamp and filters for readings within that time period, also a limit parameter so the user can choose how many readings they wants to show
     query = "SELECT * FROM readings WHERE 1=1"
     params = []
 

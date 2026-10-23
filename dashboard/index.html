@@ -6,24 +6,68 @@
 </head>
 <body>
   <h1>Telemetry Dashboard</h1>
-  <table>
-    <thead>
-        <tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr>
-    </thead>
-    <tbody id="rows"></tbody>
-    </table>
+  <label>Sensor:
+    <select id="sensor">
+        <option value="">All sensors</option>
+        <option value="chamber_pressure">Chamber pressure</option>
+        <option value="fuel_flow_rate">Fuel flow rate</option>
+        <option value="chamber_temperature">Chamber temperature</option>
+    </select>
+    </label>
+    <table>
+        <thead>
+            <tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+        </table>
+    <canvas id="chart" width="600" height="250"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
-  <script>
-    fetch("http://127.0.0.1:8000/readings?limit=15") //this is a browsers way of sending a request. by default, fetch does a GET. limit=15 asks for the 5 newest readings
-      .then(response => response.json()) //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
-      .then(data => { //telling it what to do with the data when it arrives
-        const tbody = document.getElementById("rows");
-        data.forEach(reading => {
-            const tr = document.createElement("tr"); //makes a new empty table row in memory
-            tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
-            tbody.appendChild(tr); //attaches the finished row to the table
-        })
-      });
-  </script>
+    <script>
+        let chart;  //initializing our chart outside the function so it survives between calls
+        function drawChart(readings){
+            const ordered = [...readings].reverse(); //flipping the order so we can show from oldest to newest left to right
+            const labels = ordered.map(r => r.timestamp); //for r in readings, we are applying r.timestamp and making these the labels of our graph
+            const values = ordered.map(r => r.value) //for r in readings, we are applying r.value and making these the values of our graph
+            if (chart) char.destroy(); //this removes the old chard. without this, we would be drawing a new chart on top of the old one
+
+            chart = new Chart(document.getElementById("chart"),{ //this build the new chart with the type being line, the x-axis being labels and the
+                type : "line",
+                data : {
+                    labels: labels,
+                    datasets: [{label: "Value", data: values}]
+                },
+            })
+        }
+
+        
+
+
+
+
+
+        function loadReadings() { //putting the fetching of the readings in a function so we can do it more than once
+            const sensor = document.getElementById("sensor").value; //reads which option is currently selected
+            let url ="http://127.0.0.1:8000/readings?limit=60"; //going to build on this url depending on if a sensor is selected or not
+            if (sensor){ //if there is a sensor selected
+                url += "&sensor=" + sensor; //add thtat sensor to the url that we are going to fetch from
+            } 
+    
+            fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=15 asks for the 15 newest readings
+            .then(response => response.json()) //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
+            .then(data => { //telling it what to do with the data when it arrives
+                const tbody = document.getElementById("rows");
+                tbody.innerHTML = ""; //this empties the table body before filling it again
+                data.forEach(reading => {
+                    const tr = document.createElement("tr"); //makes a new empty table row in memory
+                    tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
+                    tbody.appendChild(tr); //attaches the finished row to the table
+                })
+                drawChart(data);
+            });
+        }
+        document.getElementById("sensor").addEventListener("change", loadReadings); //when the dropdown changes, run loadReadings again
+        loadReadings(); //runs it once the page loads so we don't have empty table at the start
+    </script>
 </body>
 </html>

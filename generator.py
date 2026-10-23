@@ -39,7 +39,7 @@ def main(max_ticks):
             for config in SENSORS:
                 reading = json.dumps(make_reading(tick, **config))
                 
-                print(reading, flush=True)
+                print(reading, flush=True) #flush = true allows the program to immediately write output instead of waiting in a memory buffer
             time.sleep(1)
 
     except KeyboardInterrupt:

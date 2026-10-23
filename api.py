@@ -53,23 +53,43 @@ def add_reading(reading: Reading): #if incoming data is not of object type Readi
     return reading #returning what reading we just added
 
 @app.get("/readings") #same endpoint as above except this is a different method (get)
-def list_readings(sensor: str | None = None, start:str | None = None): #takes in sensor as a parameter that fastapi reals from the url (eg. /readings?sensor=chamber_pressure)
+def list_readings(sensor: str | None = None, start:str | None = None, end:str | None = None, limit:int = 100): #takes in sensor as a parameter that fastapi reals from the url (eg. /readings?sensor=chamber_pressure)
+    #takes start and end timestamp and filters for readings within that time period
+    query = "SELECT * FROM readings WHERE 1=1"
+    params = []
+
+    if sensor:
+        query += " AND sensor = ?"
+        params.append(sensor)
+    if start:
+        query += " AND timestamp >= ?"
+        params.append(start)
+    if end:
+        query += " AND timestamp <= ?"
+        params.append(end)
+    query += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
     conn = get_connection()
-    if sensor: #if there is a sensor that was provided
-        rows = conn.execute("SELECT * from readings WHERE sensor = ?", (sensor,)).fetchall() #give me every column from every row in the data table 
-        #sensor = (?) (sensor) filters for all the rows with that specific censor name
-        #(sensor,)- this is a tuple because execute wants a tuple
-        # .fetchall() pulls the matching row into python as a list
-        #using ? instead of an f-string prevents SQL injection where the database would treat everything like a real instruction as opposed to data
-        #eg if we had something like WHERE sensor = x or '1'='1', this would always evaluate to true and we would return the whole databse and a worse input could modify or delete the data
-        #but using ?, SQL will try to look for a sensor literally named x or '1'='1' and will find nothing 
-    else:
-        rows = conn.execute("SELECT * from readings").fetchall()
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(row) for row in rows]
-
 
 #questions
 #why do we need to close our connections when we are donw in init_db. why can't we keep in open. is it kind of like closing the database file?
 #in list_readings, what is the .fetchall() doing and why cant we just do the plain sql command
 #why does execute want a tuple when we are trying to fill in placeholders?
+
+# def list_readings(sensor: str | None = None, start:str | None = None): #takes in sensor as a parameter that fastapi reals from the url (eg. /readings?sensor=chamber_pressure)
+#     conn = get_connection()
+#     if sensor: #if there is a sensor that was provided
+#         rows = conn.execute("SELECT * from readings WHERE sensor = ?", (sensor,)).fetchall() #give me every column from every row in the data table 
+#         #sensor = (?) (sensor) filters for all the rows with that specific censor name
+#         #(sensor,)- this is a tuple because execute wants a tuple
+#         # .fetchall() pulls the matching row into python as a list
+#         #using ? instead of an f-string prevents SQL injection where the database would treat everything like a real instruction as opposed to data
+#         #eg if we had something like WHERE sensor = x or '1'='1', this would always evaluate to true and we would return the whole databse and a worse input could modify or delete the data
+#         #but using ?, SQL will try to look for a sensor literally named x or '1'='1' and will find nothing 
+#     else:
+#         rows = conn.execute("SELECT * from readings").fetchall()
+#     conn.close()
+#     return [dict(row) for row in rows]

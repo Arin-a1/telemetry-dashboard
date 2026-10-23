@@ -1,8 +1,16 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI() #this is creating the app and everything else that attached to it
+
+#this fixes the cors issue by telling the api that this website is allowed to access it under the specifications  listed out
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5500"], #origin of site that is allowed to access this api
+    allow_methods=["GET"],# what kind of requests are allowed from those pages
+)
 
 #--reload flag restarts the server whenver i save a change to my code. without that you would have to stop and restart the server by hand before seeing your changes
 

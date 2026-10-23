@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Telemetry</title>
+</head>
+<body>
+  <h1>Telemetry Dashboard</h1>
+  <table>
+    <thead>
+        <tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+    </table>
+
+  <script>
+    fetch("http://127.0.0.1:8000/readings?limit=15") //this is a browsers way of sending a request. by default, fetch does a GET. limit=15 asks for the 5 newest readings
+      .then(response => response.json()) //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
+      .then(data => { //telling it what to do with the data when it arrives
+        const tbody = document.getElementById("rows");
+        data.forEach(reading => {
+            const tr = document.createElement("tr"); //makes a new empty table row in memory
+            tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
+            tbody.appendChild(tr); //attaches the finished row to the table
+        })
+      });
+  </script>
+</body>
+</html>

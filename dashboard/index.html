@@ -20,24 +20,51 @@
         </thead>
         <tbody id="rows"></tbody>
         </table>
-    <canvas id="chart" width="600" height="250"></canvas>
+    <div id="charts"></div>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
     <script>
-        let chart;  //initializing our chart outside the function so it survives between calls
-        function drawChart(readings){
-            const ordered = [...readings].reverse(); //flipping the order so we can show from oldest to newest left to right
-            const labels = ordered.map(r => r.timestamp); //for r in readings, we are applying r.timestamp and making these the labels of our graph
-            const values = ordered.map(r => r.value) //for r in readings, we are applying r.value and making these the values of our graph
-            if (chart) char.destroy(); //this removes the old chard. without this, we would be drawing a new chart on top of the old one
+        function groupBySensor(readings){
+            const groups = {}; //creating an empty objects for the groups to live in
+            for (const reading of readings){ //loop through all readings
+                if (!groups[reading.sensor]){//if reading sensor name is not already in groups
+                    groups[reading.sensor] = []; //add sensor name to groups and assign it to an empty list
 
-            chart = new Chart(document.getElementById("chart"),{ //this build the new chart with the type being line, the x-axis being labels and the
+                }
+                groups[reading.sensor].push(reading); //add the reading to the list of readings with that particular sensor name
+            }
+            return groups;
+        }
+
+
+
+
+
+        let charts = {};  //initializing our charts outside the function so they survive between calls. this is an object holding one chart per sensor because we now have several to keep track of
+        function drawCharts(readings){
+            for (const chart in charts) charts[chart].destroy() //this removes all the old charts. without this, we would be drawing new charts on top of the old ones. this loops over the object keys (using "in" and not "of") 
+
+            document.getElementById("charts").innerHTML = ""; //emptying out the html of all the charts we made before
+            if (readings.length ===0) return;
+            const groups = groupBySensor(readings); //{"chamber pressure": [{}, {}, {}, {}], "fuel_flow_rate": [{}, {}, {}]}
+            for (const sensor of Object.keys(groups)){
+                const ordered = [...groups[sensor]].reverse();
+                const canvas = document.createElement("canvas"); //making a new chart for this particular sensor. building a new canvas for each sensor. 
+                document.getElementById("charts").appendChild(canvas); //appending our new chart to our list of charts. appendchild puts it on the page
+                charts[sensor] = new Chart(canvas,{ //this build the new chart with the type being line, the x-axis being labels and the
                 type : "line",
                 data : {
-                    labels: labels,
-                    datasets: [{label: "Value", data: values}]
+                    labels: ordered.map(r => r.timestamp), //each chart gets its own labels
+                    datasets: [{
+                        label:`${sensor} (${ordered[0].unit})`,
+                        data: ordered.map(r => r.value),
+                    }],
                 },
-            })
+            });
+        }
+
+
+           
         }
 
         
@@ -53,7 +80,7 @@
                 url += "&sensor=" + sensor; //add thtat sensor to the url that we are going to fetch from
             } 
     
-            fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=15 asks for the 15 newest readings
+            fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=60 asks for the 60 newest readings
             .then(response => response.json()) //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
             .then(data => { //telling it what to do with the data when it arrives
                 const tbody = document.getElementById("rows");
@@ -63,7 +90,7 @@
                     tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
                     tbody.appendChild(tr); //attaches the finished row to the table
                 })
-                drawChart(data);
+                drawCharts(data);
             });
         }
         document.getElementById("sensor").addEventListener("change", loadReadings); //when the dropdown changes, run loadReadings again
@@ -71,3 +98,7 @@
     </script>
 </body>
 </html>
+
+
+
+

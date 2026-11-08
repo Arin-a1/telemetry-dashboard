@@ -1,0 +1,131 @@
+<!-- <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Telemetry</title>
+  <style>
+  :root {
+    --bg: #0f1419; --card: #1a2029; --border: #2a3441;
+    --text: #e6edf3; --muted: #8b98a5; --accent: #3b82f6; --alert: #ef4444;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  h1 { margin: 0; font-size: 1.4rem; }
+  .live { color: var(--muted); font-size: 0.85rem; margin-left: 12px; }
+  .live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                  background: #22c55e; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; }
+  #charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; height: 280px; position: relative; }
+  table { width: 100%; margin-top: 24px; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); }
+</style>
+</head>
+<body>
+    
+  <h1>Telemetry Dashboard</h1>
+  <label>Sensor:
+    <select id="sensor">
+        <option value="">All sensors</option>
+        <option value="chamber_pressure">Chamber pressure</option>
+        <option value="fuel_flow_rate">Fuel flow rate</option>
+        <option value="chamber_temperature">Chamber temperature</option>
+    </select>
+    </label>
+    <table>
+        <thead>
+            <tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+        </table>
+    <div id="charts"></div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+    <script>
+        function groupBySensor(readings){
+            const groups = {}; //creating an empty objects for the groups to live in
+            for (const reading of readings){ //loop through all readings
+                if (!groups[reading.sensor]){//if reading sensor name is not already in groups
+                    groups[reading.sensor] = []; //add sensor name to groups and assign it to an empty list
+
+                }
+                groups[reading.sensor].push(reading); //add the reading to the list of readings with that particular sensor name
+            }
+            return groups;
+        }
+
+
+
+
+
+        let charts = {};  //initializing our charts outside the function so they survive between calls. this is an object holding one chart per sensor because we now have several to keep track of
+        function drawCharts(readings, flaggedIds){
+            for (const chart in charts) charts[chart].destroy() //this removes all the old charts. without this, we would be drawing new charts on top of the old ones. this loops over the object keys (using "in" and not "of") 
+            charts = {};
+
+            document.getElementById("charts").innerHTML = ""; //emptying out the html of all the charts we made before
+            if (readings.length ===0) return;
+            const groups = groupBySensor(readings); //{"chamber pressure": [{}, {}, {}, {}], "fuel_flow_rate": [{}, {}, {}]}
+            for (const sensor of Object.keys(groups)){
+                const ordered = [...groups[sensor]].reverse();
+                const canvas = document.createElement("canvas"); //making a new chart for this particular sensor. building a new canvas for each sensor. 
+                document.getElementById("charts").appendChild(canvas); //appending our new chart to our list of charts. appendchild puts it on the page
+                charts[sensor] = new Chart(canvas,{ //this build the new chart with the type being line, the x-axis being labels and the
+                type : "line",
+                data : {
+                    labels: ordered.map(r => r.timestamp), //each chart gets its own labels
+                    datasets: [{
+                        label:`${sensor} (${ordered[0].unit})`,
+                        data: ordered.map(r => r.value),
+                        pointBackgroundColor: ordered.map(r => flaggedIds.has(r.id) ? "red" : "rgba(54, 162, 235, 0.6)"),
+                        pointRadius: ordered.map(r => flaggedIds.has(r.id) ? 6 : 2),
+                    }],
+                },
+            });
+        }
+
+
+           
+        }
+
+        
+
+
+
+
+
+        function loadReadings() { //putting the fetching of the readings in a function so we can do it more than once
+            const sensor = document.getElementById("sensor").value; //reads which option is currently selected
+            let url ="http://127.0.0.1:8000/readings?limit=60"; //going to build on this url depending on if a sensor is selected or not
+            if (sensor){ //if there is a sensor selected
+                url += "&sensor=" + sensor; //add thtat sensor to the url that we are going to fetch from
+            } 
+            Promise.all([
+                fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=60 asks for the 60 newest readings
+                .then(response => response.json()), //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
+                fetch("http://127.0.0.1:8000/anomalies?limit=500").then(response => response.json()),
+            ])
+            .then(([data, anomalies]) => { //telling it what to do with the data when it arrives
+                const flaggedIds = new Set(anomalies.map(a => a["reading_id"]))
+                const tbody = document.getElementById("rows");
+                tbody.innerHTML = ""; //this empties the table body before filling it again
+                data.forEach(reading => {
+                    const tr = document.createElement("tr"); //makes a new empty table row in memory
+                    tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
+                    tbody.appendChild(tr); //attaches the finished row to the table
+                })
+                drawCharts(data, flaggedIds);
+            });
+        }
+        document.getElementById("sensor").addEventListener("change", loadReadings); //when the dropdown changes, run loadReadings again
+        loadReadings(); //runs it once the page loads so we don't have empty table at the start
+        setInterval(loadReadings, 5000)
+    </script>
+</body>
+</html>
+
+
+
+ -->

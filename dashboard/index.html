@@ -1,111 +1,292 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Telemetry</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test stand telemetry</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #1a2029; --border: #2a3441;
+      --text: #e6edf3; --muted: #8b98a5;
+      --alert: #ef4444; --ok: #22c55e; --warn: #eab308;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; }
+
+    header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .title { display: flex; align-items: center; gap: 14px; }
+    h1 { margin: 0; font-size: 1.6rem; font-weight: 650; letter-spacing: -0.01em; }
+    .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+    .live { color: var(--ok); font-size: 0.85rem; font-weight: 600; padding: 3px 12px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
+    .live::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 8px; animation: pulse 2s infinite; }
+    .live.stale { color: var(--warn); }
+    .live.stale::before { background: var(--warn); animation: none; }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { .live::before { animation: none; } }
+
+    label { color: var(--muted); font-size: 0.9rem; }
+    select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 7px 10px; border-radius: 6px; margin-left: 8px; font: inherit; }
+    select:focus-visible, summary:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    /* Latest value per sensor: the first thing a viewer reads */
+    #stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; margin-bottom: 16px; }
+    .stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+    .stat.alert { border-color: var(--alert); }
+    .stat-label { color: var(--muted); font-size: 0.9rem; }
+    .stat-value { font-size: 2.4rem; font-weight: 650; margin: 4px 0 2px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    .stat-unit { font-size: 1rem; font-weight: 400; color: var(--muted); }
+    .stat-note { font-size: 0.85rem; color: var(--muted); }
+    .stat.alert .stat-value, .stat.alert .stat-note { color: var(--alert); }
+
+    .main { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+    #charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+    .card-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
+    /* Chart.js needs a parent with a set height and position: relative to fill it */
+    .chart-wrap { position: relative; height: 220px; }
+
+    .alert-item { padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .alert-item:last-child { border-bottom: 0; }
+    .alert-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.9rem; }
+    .alert-name { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .alert-value { color: var(--alert); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .alert-time { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+    .empty { color: var(--muted); font-size: 0.9rem; }
+
+    details { margin-top: 24px; }
+    summary { cursor: pointer; color: var(--muted); }
+    table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    tr.flagged td { color: var(--alert); }
+  </style>
 </head>
 <body>
-  <h1>Telemetry Dashboard</h1>
-  <label>Sensor:
-    <select id="sensor">
+  <header>
+    <div>
+      <div class="title">
+        <h1>Test stand telemetry</h1>
+        <span id="status" class="live">Live</span>
+      </div>
+      <p class="subtitle">Simulated engine sensor data. Refreshes every 5 seconds.</p>
+    </div>
+    <label>Sensor
+      <select id="sensor">
         <option value="">All sensors</option>
         <option value="chamber_pressure">Chamber pressure</option>
         <option value="fuel_flow_rate">Fuel flow rate</option>
         <option value="chamber_temperature">Chamber temperature</option>
-    </select>
+      </select>
     </label>
+  </header>
+
+  <section id="stats"></section>
+
+  <div class="main">
+    <section id="charts"></section>
+    <aside class="card">
+      <div class="card-title">Recent anomalies</div>
+      <div id="alerts"></div>
+    </aside>
+  </div>
+
+  <details>
+    <summary>Raw readings</summary>
     <table>
-        <thead>
-            <tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr>
-        </thead>
-        <tbody id="rows"></tbody>
-        </table>
-    <div id="charts"></div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+      <thead><tr><th>Time</th><th>Sensor</th><th>Value</th><th>Unit</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </details>
 
-    <script>
-        function groupBySensor(readings){
-            const groups = {}; //creating an empty objects for the groups to live in
-            for (const reading of readings){ //loop through all readings
-                if (!groups[reading.sensor]){//if reading sensor name is not already in groups
-                    groups[reading.sensor] = []; //add sensor name to groups and assign it to an empty list
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <script>
+    const API = "http://127.0.0.1:8000";
+    const NAMES = { chamber_pressure: "Chamber pressure", fuel_flow_rate: "Fuel flow rate", chamber_temperature: "Chamber temperature" };
+    const COLORS = { chamber_pressure: "#60a5fa", fuel_flow_rate: "#a78bfa", chamber_temperature: "#fb923c" };
+    const DEFAULT_COLOR = "#94a3b8";
 
-                }
-                groups[reading.sensor].push(reading); //add the reading to the list of readings with that particular sensor name
-            }
-            return groups;
-        }
+    // Read theme colors from the CSS variables so the colors live in one place
+    const css = getComputedStyle(document.documentElement);
+    const MUTED = css.getPropertyValue("--muted").trim();
+    const BORDER = css.getPropertyValue("--border").trim();
+    const ALERT = css.getPropertyValue("--alert").trim();
 
+    const nameOf = sensor => NAMES[sensor] || sensor;
+    const colorOf = sensor => COLORS[sensor] || DEFAULT_COLOR;
 
+    // Builds an element and sets its text with textContent. Unlike innerHTML, textContent never
+    // treats API data as HTML, so a sensor named "<img onerror=...>" shows up as plain text.
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
 
+    // fetch only rejects on network failure, so turn HTTP errors (like a 500) into errors too
+    function getJSON(url) {
+      return fetch(url).then(response => {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      });
+    }
 
+    function ago(seconds) {
+      if (seconds < 60) return seconds + "s";
+      if (seconds < 3600) return Math.round(seconds / 60) + "m";
+      return Math.round(seconds / 3600) + "h";
+    }
 
-        let charts = {};  //initializing our charts outside the function so they survive between calls. this is an object holding one chart per sensor because we now have several to keep track of
-        function drawCharts(readings, flaggedIds){
-            for (const chart in charts) charts[chart].destroy() //this removes all the old charts. without this, we would be drawing new charts on top of the old ones. this loops over the object keys (using "in" and not "of") 
-            charts = {};
+    function groupBySensor(readings) {
+      const groups = {}; // one list of readings per sensor name
+      for (const reading of readings) {
+        if (!groups[reading.sensor]) groups[reading.sensor] = [];
+        groups[reading.sensor].push(reading);
+      }
+      return groups;
+    }
 
-            document.getElementById("charts").innerHTML = ""; //emptying out the html of all the charts we made before
-            if (readings.length ===0) return;
-            const groups = groupBySensor(readings); //{"chamber pressure": [{}, {}, {}, {}], "fuel_flow_rate": [{}, {}, {}]}
-            for (const sensor of Object.keys(groups)){
-                const ordered = [...groups[sensor]].reverse();
-                const canvas = document.createElement("canvas"); //making a new chart for this particular sensor. building a new canvas for each sensor. 
-                document.getElementById("charts").appendChild(canvas); //appending our new chart to our list of charts. appendchild puts it on the page
-                charts[sensor] = new Chart(canvas,{ //this build the new chart with the type being line, the x-axis being labels and the
-                type : "line",
-                data : {
-                    labels: ordered.map(r => r.timestamp), //each chart gets its own labels
-                    datasets: [{
-                        label:`${sensor} (${ordered[0].unit})`,
-                        data: ordered.map(r => r.value),
-                        pointBackgroundColor: ordered.map(r => flaggedIds.has(r.id) ? "red" : "rgba(54, 162, 235, 0.6)"),
-                        pointRadius: ordered.map(r => flaggedIds.has(r.id) ? 6 : 2),
-                    }],
-                },
-            });
-        }
+    function setStatus(text, stale) {
+      const status = document.getElementById("status");
+      status.textContent = text;
+      status.classList.toggle("stale", stale);
+    }
 
+    // The newest reading's age tells the viewer whether the data feed is alive.
+    // Timestamps come from the generator without a timezone, so this assumes the browser is on the same machine.
+    function renderStatus(data) {
+      if (data.length === 0) return setStatus("No data yet", true);
+      const age = Math.round((Date.now() - new Date(data[0].timestamp)) / 1000);
+      setStatus(age < 15 ? "Live" : "No new data for " + ago(age), age >= 15);
+    }
 
-           
-        }
+    function renderStats(groups, flaggedIds) {
+      const box = document.getElementById("stats");
+      box.innerHTML = "";
+      for (const sensor of Object.keys(groups).sort()) { // sorted so the layout never reshuffles
+        const latest = groups[sensor][0]; // the API returns newest first
+        const isFlagged = flaggedIds.has(latest.id);
+        const card = el("div", "stat" + (isFlagged ? " alert" : ""));
+        card.appendChild(el("div", "stat-label", nameOf(sensor)));
+        const value = el("div", "stat-value", latest.value);
+        value.appendChild(el("span", "stat-unit", " " + latest.unit));
+        card.appendChild(value);
+        card.appendChild(el("div", "stat-note", isFlagged ? "Anomaly detected" : "Normal"));
+        box.appendChild(card);
+      }
+    }
 
-        
+    let charts = {}; // one Chart.js chart per sensor, kept so we can destroy them before redrawing
+    function drawCharts(groups, flaggedIds) {
+      for (const name in charts) charts[name].destroy();
+      charts = {};
+      const container = document.getElementById("charts");
+      container.innerHTML = "";
 
+      for (const sensor of Object.keys(groups).sort()) {
+        const ordered = [...groups[sensor]].reverse(); // oldest to newest, left to right
+        const color = colorOf(sensor);
+        const isFlagged = r => flaggedIds.has(r.id);
 
+        const card = el("div", "card");
+        card.appendChild(el("div", "card-title", `${nameOf(sensor)} (${ordered[0].unit})`));
+        const wrap = el("div", "chart-wrap");
+        const canvas = document.createElement("canvas");
+        wrap.appendChild(canvas);
+        card.appendChild(wrap);
+        container.appendChild(card);
 
+        charts[sensor] = new Chart(canvas, {
+          type: "line",
+          data: {
+            labels: ordered.map(r => r.timestamp.slice(11)), // keep just the time, like 17:28:26
+            datasets: [{
+              label: nameOf(sensor),
+              data: ordered.map(r => r.value),
+              borderColor: color,
+              borderWidth: 2,
+              tension: 0.25,
+              pointBackgroundColor: ordered.map(r => isFlagged(r) ? ALERT : color),
+              pointBorderColor: ordered.map(r => isFlagged(r) ? "#fff" : color),
+              pointRadius: ordered.map(r => isFlagged(r) ? 6 : 1.5),
+              pointHoverRadius: 5,
+            }],
+          },
+          options: {
+            animation: false, // no redraw animation every refresh
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: MUTED, maxTicksLimit: 6 }, grid: { color: BORDER } },
+              y: { ticks: { color: MUTED }, grid: { color: BORDER } },
+            },
+          },
+        });
+      }
+    }
 
+    // The chart points scroll away, so this list keeps recent anomalies visible
+    function renderAlerts(anomalies, units) {
+      const list = document.getElementById("alerts");
+      list.innerHTML = "";
+      if (anomalies.length === 0) {
+        list.appendChild(el("div", "empty", "No anomalies flagged yet."));
+        return;
+      }
+      anomalies.slice(0, 10).forEach(a => {
+        const item = el("div", "alert-item");
+        const top = el("div", "alert-top");
+        const name = el("span", "alert-name");
+        const dot = el("span", "dot");
+        dot.style.background = colorOf(a.sensor);
+        name.append(dot, nameOf(a.sensor));
+        top.append(name, el("span", "alert-value", a.value + " " + (units[a.sensor] || "")));
+        item.append(top, el("div", "alert-time", a.timestamp.slice(5).replace("T", " ")));
+        list.appendChild(item);
+      });
+    }
 
-        function loadReadings() { //putting the fetching of the readings in a function so we can do it more than once
-            const sensor = document.getElementById("sensor").value; //reads which option is currently selected
-            let url ="http://127.0.0.1:8000/readings?limit=60"; //going to build on this url depending on if a sensor is selected or not
-            if (sensor){ //if there is a sensor selected
-                url += "&sensor=" + sensor; //add thtat sensor to the url that we are going to fetch from
-            } 
-            Promise.all([
-                fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=60 asks for the 60 newest readings
-                .then(response => response.json()), //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
-                fetch("http://127.0.0.1:8000/anomalies?limit=500").then(response => response.json()),
-            ])
-            .then(([data, anomalies]) => { //telling it what to do with the data when it arrives
-                const flaggedIds = new Set(anomalies.map(a => a["reading_id"]))
-                const tbody = document.getElementById("rows");
-                tbody.innerHTML = ""; //this empties the table body before filling it again
-                data.forEach(reading => {
-                    const tr = document.createElement("tr"); //makes a new empty table row in memory
-                    tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
-                    tbody.appendChild(tr); //attaches the finished row to the table
-                })
-                drawCharts(data, flaggedIds);
-            });
-        }
-        document.getElementById("sensor").addEventListener("change", loadReadings); //when the dropdown changes, run loadReadings again
-        loadReadings(); //runs it once the page loads so we don't have empty table at the start
-        setInterval(loadReadings, 5000)
-    </script>
+    function renderTable(data, flaggedIds) {
+      const tbody = document.getElementById("rows");
+      tbody.innerHTML = "";
+      data.slice(0, 30).forEach(reading => {
+        const tr = el("tr", flaggedIds.has(reading.id) ? "flagged" : "");
+        [reading.timestamp, reading.sensor, reading.value, reading.unit].forEach(text => tr.appendChild(el("td", "", text)));
+        tbody.appendChild(tr);
+      });
+    }
+
+    function loadReadings() {
+      const sensor = document.getElementById("sensor").value;
+      const query = sensor ? "&sensor=" + sensor : "";
+      const limit = sensor ? 60 : 180; // 180 readings is about 60 per sensor, roughly the last minute
+
+      Promise.all([
+        getJSON(`${API}/readings?limit=${limit}${query}`),
+        getJSON(`${API}/anomalies?limit=500${query}`),
+      ])
+        .then(([data, anomalies]) => {
+          const flaggedIds = new Set(anomalies.map(a => a.reading_id)); // a reading's id links to the anomaly's reading_id
+          const units = {};
+          data.forEach(r => { units[r.sensor] = r.unit; });
+          const groups = groupBySensor(data);
+
+          renderStatus(data);
+          renderStats(groups, flaggedIds);
+          drawCharts(groups, flaggedIds);
+          renderAlerts(anomalies, units);
+          renderTable(data, flaggedIds);
+        })
+        .catch(() => setStatus("Can't reach the API. Retrying.", true));
+    }
+
+    document.getElementById("sensor").addEventListener("change", loadReadings);
+    loadReadings();
+    setInterval(loadReadings, 5000);
+  </script>
 </body>
 </html>
-
-
-
-

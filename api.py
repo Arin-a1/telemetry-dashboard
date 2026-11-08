@@ -32,6 +32,15 @@ def init_db():
             unit TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS anomalies(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reading_id INTEGER NOT NULL UNIQUE,
+            timestamp TEXT NOT NULL,
+            sensor TEXT NOT NULL,
+            value REAL NOT NULL
+        )
+    """)
     conn.commit() #saving our changes
     conn.close() #closing the connection when you are done
 
@@ -64,6 +73,47 @@ def add_reading(reading: Reading): #if incoming data is not of object type Readi
 def list_readings(sensor: str | None = None, start:str | None = None, end:str | None = None, limit:int = 100): #takes in sensor as a parameter that fastapi reals from the url (eg. /readings?sensor=chamber_pressure)
     #takes start and end timestamp and filters for readings within that time period, also a limit parameter so the user can choose how many readings they wants to show
     query = "SELECT * FROM readings WHERE 1=1"
+    params = []
+
+    if sensor:
+        query += " AND sensor = ?"
+        params.append(sensor)
+    if start:
+        query += " AND timestamp >= ?"
+        params.append(start)
+    if end:
+        query += " AND timestamp <= ?"
+        params.append(end)
+    query += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
+    conn = get_connection()
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+
+class Anomaly(BaseModel):
+    reading_id: int #this links each flag to the reading it corresponds to in the readings table
+    timestamp: str
+    sensor: str
+    value: float
+
+@app.post("/anomalies", status_code=201)
+def add_anomaly(anomaly: Anomaly):
+    conn = get_connection() #opening file cabinet
+    conn.execute(
+        "INSERT OR IGNORE INTO anomalies (reading_id, timestamp, sensor, value) VALUES (?, ?, ?, ?)", #IGNORE makes sure it skips duplicates instead of throwing an error (because it is going against the uniqueness rule of the table)
+        (anomaly.reading_id, anomaly.timestamp, anomaly.sensor, anomaly.value),
+    )
+    conn.commit() #saving
+    conn.close() #closing file cabinet
+    return anomaly #returning what reading we just added
+
+@app.get("/anomalies") #same endpoint as above except this is a different method (get)
+def list_anomalies(sensor: str | None = None, start:str | None = None, end:str | None = None, limit:int = 100): #takes in sensor as a parameter that fastapi reals from the url (eg. /anomalies?sensor=chamber_pressure)
+    #takes start and end timestamp and filters for readings within that time period, also a limit parameter so the user can choose how many readings they wants to show
+    query = "SELECT * FROM anomalies WHERE 1=1"
     params = []
 
     if sensor:

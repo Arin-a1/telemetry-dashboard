@@ -1,11 +1,13 @@
 from collections import deque
 import requests
 from detector import is_anomaly
-from statistics import mean
+import time
 
-API_URL = "http://127.0.0.1:8000/readings" #address of our get endpoint
+API_URL = "http://127.0.0.1:8000/readings" #address of our get endpoint for list of readings
+ANOMALY_URL = "http://127.0.0.1:8000/anomalies" # address of our post endpoint for list of anomalies
 WINDOW = 30
-
+SENSORS = ["chamber_pressure", "fuel_flow_rate", "chamber_temperature"]
+#checking if a sensor if an anomaly or not based on the values of the sensors that came before it (history)
 def check_sensor(sensor):
     response = requests.get(API_URL, params={"sensor": sensor, "limit": 500})
     readings = response.json()
@@ -19,14 +21,20 @@ def check_sensor(sensor):
         if is_anomaly(history, r["value"]):
             flagged += 1
             streak += 1
+            print("ANOMALY", r["timestamp"], sensor, r["value"])
             if streak >= 5:
-                print("ANOMALY", r["timestamp"], sensor, r["value"], f"window mean {mean(history):.1f}")
                 history.clear()
                 print("RESET", r["timestamp"], sensor)
                 history.append(r["value"])
                 streak = 0
-            else:
-                print("ANOMALY", r["timestamp"], sensor, r["value"], f"window mean {mean(history):.1f}")
+
+            response = requests.post(ANOMALY_URL, json={
+                "reading_id": r["id"],
+                "timestamp": r["timestamp"],
+                "sensor": sensor,
+                "value": r["value"]
+            })
+            response.raise_for_status()
         else:
             history.append(r["value"])
             streak = 0
@@ -34,5 +42,18 @@ def check_sensor(sensor):
     print(f"{sensor}: {len(readings)} readings, {flagged} flagged")
 
 
-for sensor in ["chamber_pressure", "fuel_flow_rate", "chamber_temperature"]:
-    check_sensor(sensor)
+def run_once():
+    for sensor in SENSORS:
+        check_sensor(sensor)
+
+
+if __name__ == "__main__":
+    try:
+        while True:
+            try:
+                run_once()
+            except requests.exceptions.RequestException:
+                print("API unreachable, retrying ...")
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print("Stopped")

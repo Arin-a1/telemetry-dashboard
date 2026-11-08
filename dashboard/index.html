@@ -41,8 +41,9 @@
 
 
         let charts = {};  //initializing our charts outside the function so they survive between calls. this is an object holding one chart per sensor because we now have several to keep track of
-        function drawCharts(readings){
+        function drawCharts(readings, flaggedIds){
             for (const chart in charts) charts[chart].destroy() //this removes all the old charts. without this, we would be drawing new charts on top of the old ones. this loops over the object keys (using "in" and not "of") 
+            charts = {};
 
             document.getElementById("charts").innerHTML = ""; //emptying out the html of all the charts we made before
             if (readings.length ===0) return;
@@ -58,6 +59,8 @@
                     datasets: [{
                         label:`${sensor} (${ordered[0].unit})`,
                         data: ordered.map(r => r.value),
+                        pointBackgroundColor: ordered.map(r => flaggedIds.has(r.id) ? "red" : "rgba(54, 162, 235, 0.6)"),
+                        pointRadius: ordered.map(r => flaggedIds.has(r.id) ? 6 : 2),
                     }],
                 },
             });
@@ -79,10 +82,13 @@
             if (sensor){ //if there is a sensor selected
                 url += "&sensor=" + sensor; //add thtat sensor to the url that we are going to fetch from
             } 
-    
-            fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=60 asks for the 60 newest readings
-            .then(response => response.json()) //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
-            .then(data => { //telling it what to do with the data when it arrives
+            Promise.all([
+                fetch(url) //this is a browsers way of sending a request. by default, fetch does a GET. limit=60 asks for the 60 newest readings
+                .then(response => response.json()), //when the data arrives, convert it into readl data. same thing as json.loads (converts json formatted string into native python object like dictionary)
+                fetch("http://127.0.0.1:8000/anomalies?limit=500").then(response => response.json()),
+            ])
+            .then(([data, anomalies]) => { //telling it what to do with the data when it arrives
+                const flaggedIds = new Set(anomalies.map(a => a["reading_id"]))
                 const tbody = document.getElementById("rows");
                 tbody.innerHTML = ""; //this empties the table body before filling it again
                 data.forEach(reading => {
@@ -90,11 +96,12 @@
                     tr.innerHTML = `<td>${reading.timestamp}</td><td>${reading.sensor}</td><td>${reading.value}</td><td>${reading.unit}</td>`; //telling us how to fill that row. first one should have timestamp, second one should have sensor etc.
                     tbody.appendChild(tr); //attaches the finished row to the table
                 })
-                drawCharts(data);
+                drawCharts(data, flaggedIds);
             });
         }
         document.getElementById("sensor").addEventListener("change", loadReadings); //when the dropdown changes, run loadReadings again
         loadReadings(); //runs it once the page loads so we don't have empty table at the start
+        setInterval(loadReadings, 5000)
     </script>
 </body>
 </html>
